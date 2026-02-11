@@ -358,36 +358,36 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Benchmark Mullvad exit nodes on Tailscale."
     )
-    parser.add_argument("--ping-host", default="google.com", help="Host to ping (default: google.com)")
-    parser.add_argument("--ping-count", type=int, default=3, help="ICMP probe count per node (default: 3)")
+    parser.add_argument("--ping-host", default="8.8.8.8", help="Host/IP to ping (default: 8.8.8.8)")
+    parser.add_argument("--ping-count", type=int, default=1, help="ICMP probe count per node (default: 1)")
     parser.add_argument(
         "--ping-timeout",
         type=float,
-        default=2.0,
-        help="Per-ping timeout in seconds (default: 2.0)",
+        default=1.0,
+        help="Per-ping timeout in seconds (default: 1.0)",
     )
     parser.add_argument(
         "--download-url",
-        default="https://speed.cloudflare.com/__down?bytes=5000000",
+        default="https://speed.cloudflare.com/__down?bytes=300000",
         help="Download URL used for throughput test",
     )
     parser.add_argument(
         "--download-bytes",
         type=int,
-        default=5_000_000,
-        help="Maximum bytes to read from download URL (default: 5000000)",
+        default=300_000,
+        help="Maximum bytes to read from download URL (default: 300000)",
     )
     parser.add_argument(
         "--download-timeout",
         type=float,
-        default=30.0,
-        help="Download timeout in seconds (default: 30.0)",
+        default=6.0,
+        help="Download timeout in seconds (default: 6.0)",
     )
     parser.add_argument(
         "--switch-timeout",
         type=float,
-        default=20.0,
-        help="Seconds to wait for exit node switch (default: 20.0)",
+        default=8.0,
+        help="Seconds to wait for exit node switch (default: 8.0)",
     )
     parser.add_argument("--filter", default="", help="Substring filter for hostname/country/city")
     parser.add_argument("--limit", type=int, default=0, help="Only test first N matching nodes")

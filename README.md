@@ -60,12 +60,13 @@ tailwho --json-out results.json --csv-out results.csv
 - `--filter <text>`: filter by hostname, country, or city
 - `--limit <n>`: benchmark only first `n` matches
 - `--include-offline`: include nodes marked offline
-- `--ping-host <host>`: ping target (default `google.com`)
-- `--ping-count <n>`: ping probes per node (default `3`)
-- `--download-url <url>`: URL for throughput test
-- `--download-bytes <n>`: max bytes to read for throughput estimate
-- `--download-timeout <s>`: download timeout seconds
-- `--switch-timeout <s>`: wait time for exit-node switch to activate
+- `--ping-host <host>`: ping target (default `8.8.8.8`)
+- `--ping-count <n>`: ping probes per node (default `1`)
+- `--ping-timeout <s>`: per-ping timeout (default `1.0`)
+- `--download-url <url>`: URL for throughput test (default Cloudflare `300000`-byte endpoint)
+- `--download-bytes <n>`: max bytes to read for throughput estimate (default `300000`)
+- `--download-timeout <s>`: download timeout seconds (default `6.0`)
+- `--switch-timeout <s>`: wait time for exit-node switch to activate (default `8.0`)
 - `--json-out <file>`: write JSON results
 - `--csv-out <file>`: write CSV results
 - `--no-restore`: do not restore original exit-node state after run
