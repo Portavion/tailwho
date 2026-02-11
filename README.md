@@ -54,12 +54,21 @@ Write machine-readable output:
 tailwho --json-out results.json --csv-out results.csv
 ```
 
+Deep benchmark only survivors from a previous fast run:
+
+```bash
+tailwho --ok-from-json quick.json --ping-count 3 --ping-timeout 2 --download-url "https://speed.cloudflare.com/__down?bytes=5000000" --download-bytes 5000000 --download-timeout 30 --switch-timeout 12 --json-out deep.json --csv-out deep.csv
+```
+
 ## Common options
 
 - `--dry-run`: list matching nodes without switching exit nodes
 - `--filter <text>`: filter by hostname, country, or city
 - `--limit <n>`: benchmark only first `n` matches
 - `--include-offline`: include nodes marked offline
+- `--target <hostname-or-text>`: repeatable; extracts any `*.mullvad.ts.net` hostname from the value
+- `--targets-file <path>`: file with hostnames or pasted table output; extracts all `*.mullvad.ts.net` hostnames
+- `--ok-from-json <file>`: previous `--json-out` file; selects rows where `status=ok`
 - `--ping-host <host>`: ping target (default `8.8.8.8`)
 - `--ping-count <n>`: ping probes per node (default `1`)
 - `--ping-timeout <s>`: per-ping timeout (default `1.0`)
@@ -74,7 +83,8 @@ tailwho --json-out results.json --csv-out results.csv
 ## How it behaves
 
 - Discovers Mullvad exit nodes from `tailscale status --json`
-- Sorts nodes by country/city/hostname
+- Sorts nodes by country/city/hostname by default
+- If `--targets-file` / `--target` / `--ok-from-json` are used, benchmarks only requested hostnames (in requested order)
 - Benchmarks each node sequentially
 - Prints a summary table sorted by status and performance
 - Restores your original exit-node state in a `finally` block (unless `--no-restore`)
@@ -83,8 +93,8 @@ tailwho --json-out results.json --csv-out results.csv
 
 - `failed to connect to local Tailscaled process`:
   - Ensure Tailscale is running and authenticated: `tailscale status`
-- `cannot resolve google.com: Unknown host`:
-  - DNS is failing on the active route; try a different node or increase switch timeout
+- `cannot resolve host`:
+  - DNS is failing on the active route; use `--ping-host 8.8.8.8` or try a different node
 - Frequent `switch-timeout`:
   - Increase `--switch-timeout` (for example `--switch-timeout 40`)
 - Slow tests:

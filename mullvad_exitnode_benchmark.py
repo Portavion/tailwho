@@ -28,7 +28,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.error import URLError, HTTPError
 from urllib.request import Request, urlopen
 
@@ -37,6 +37,7 @@ PING_AVG_RE = re.compile(
     r"(?:round-trip|rtt)\s+min/avg/max/(?:stddev|mdev)\s*=\s*[\d.]+/([\d.]+)/"
 )
 PING_LOSS_RE = re.compile(r"([\d.]+)%\s+packet loss")
+HOSTNAME_RE = re.compile(r"([a-z0-9][a-z0-9.-]*\.mullvad\.ts\.net\.?)", re.IGNORECASE)
 
 
 @dataclass
@@ -83,6 +84,100 @@ def tailscale_status(include_peers: bool) -> Dict[str, Any]:
 
 def normalize_dns(name: Optional[str]) -> str:
     return (name or "").rstrip(".")
+
+
+def normalize_hostname(name: str) -> str:
+    return name.strip().rstrip(".").lower()
+
+
+def extract_hostnames(text: str) -> List[str]:
+    hosts: List[str] = []
+    seen = set()
+    for match in HOSTNAME_RE.findall(text):
+        host = normalize_hostname(match)
+        if host not in seen:
+            hosts.append(host)
+            seen.add(host)
+    return hosts
+
+
+def load_ok_hostnames_from_json(path: str) -> List[str]:
+    json_path = Path(path).expanduser()
+    raw = json_path.read_text(encoding="utf-8")
+    payload = json.loads(raw)
+    if not isinstance(payload, list):
+        raise RuntimeError(f"--ok-from-json expects a list of rows, got {type(payload).__name__}")
+
+    hosts: List[str] = []
+    seen = set()
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("status", "")) != "ok":
+            continue
+        hostname = item.get("hostname")
+        if not isinstance(hostname, str):
+            continue
+        host = normalize_hostname(hostname)
+        if host and host not in seen:
+            hosts.append(host)
+            seen.add(host)
+    return hosts
+
+
+def load_target_hostnames(
+    inline_targets: List[str],
+    targets_file: str,
+    ok_from_json: str,
+) -> List[str]:
+    hosts: List[str] = []
+    seen = set()
+
+    def add_host(host: str) -> None:
+        normalized = normalize_hostname(host)
+        if normalized and normalized not in seen:
+            hosts.append(normalized)
+            seen.add(normalized)
+
+    if ok_from_json:
+        for host in load_ok_hostnames_from_json(ok_from_json):
+            add_host(host)
+
+    if targets_file:
+        if targets_file == "-":
+            text = sys.stdin.read()
+        else:
+            target_path = Path(targets_file).expanduser()
+            text = target_path.read_text(encoding="utf-8")
+        for host in extract_hostnames(text):
+            add_host(host)
+
+    for raw in inline_targets:
+        extracted = extract_hostnames(raw)
+        if extracted:
+            for host in extracted:
+                add_host(host)
+        else:
+            # Allow direct hostname input without surrounding table text.
+            add_host(raw)
+
+    return hosts
+
+
+def select_nodes_by_hostnames(
+    nodes: List[ExitNode],
+    target_hostnames: List[str],
+) -> Tuple[List[ExitNode], List[str]]:
+    by_hostname = {normalize_hostname(n.hostname): n for n in nodes}
+    selected: List[ExitNode] = []
+    missing: List[str] = []
+    for hostname in target_hostnames:
+        node = by_hostname.get(normalize_hostname(hostname))
+        if node is None:
+            missing.append(hostname)
+        else:
+            selected.append(node)
+    return selected, missing
 
 
 def first_ip(peer: Dict[str, Any]) -> Optional[str]:
@@ -389,6 +484,22 @@ def parse_args() -> argparse.Namespace:
         default=8.0,
         help="Seconds to wait for exit node switch (default: 8.0)",
     )
+    parser.add_argument(
+        "--target",
+        action="append",
+        default=[],
+        help="Benchmark a specific hostname (repeatable); accepts table text and extracts mullvad hostnames",
+    )
+    parser.add_argument(
+        "--targets-file",
+        default="",
+        help="File containing hostnames/table text; extracts all *.mullvad.ts.net hostnames. Use '-' for stdin",
+    )
+    parser.add_argument(
+        "--ok-from-json",
+        default="",
+        help="Previous --json-out file; benchmarks rows where status=ok",
+    )
     parser.add_argument("--filter", default="", help="Substring filter for hostname/country/city")
     parser.add_argument("--limit", type=int, default=0, help="Only test first N matching nodes")
     parser.add_argument("--include-offline", action="store_true", help="Include offline nodes")
@@ -415,9 +526,20 @@ def main() -> int:
     id_to_target = build_peer_target_by_id(initial_status)
     original_exit_target = get_current_exit_target(initial_status, id_to_target)
     nodes = discover_mullvad_exit_nodes(initial_status)
+    missing_targets: List[str] = []
+    target_hostnames: List[str] = []
 
     if not args.include_offline:
         nodes = [n for n in nodes if n.online]
+
+    try:
+        target_hostnames = load_target_hostnames(args.target, args.targets_file, args.ok_from_json)
+    except Exception as exc:  # noqa: BLE001
+        print(f"Failed to load target hostnames: {exc}", file=sys.stderr)
+        return 2
+
+    if target_hostnames:
+        nodes, missing_targets = select_nodes_by_hostnames(nodes, target_hostnames)
 
     if args.filter:
         needle = args.filter.lower()
@@ -437,6 +559,12 @@ def main() -> int:
         return 1
 
     print(f"Matched {len(nodes)} Mullvad exit nodes.")
+    if target_hostnames:
+        print(f"Target hostnames requested: {len(target_hostnames)}")
+    if missing_targets:
+        preview = ", ".join(missing_targets[:5])
+        suffix = " ..." if len(missing_targets) > 5 else ""
+        print(f"Warning: {len(missing_targets)} requested hostnames were not found: {preview}{suffix}")
     if args.dry_run:
         for n in nodes:
             print(f"- {n.hostname} ({n.country}, {n.city})")
