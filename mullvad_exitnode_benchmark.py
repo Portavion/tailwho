@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import http.client
 import json
 import math
 import platform
@@ -227,7 +228,13 @@ def download_speed_mbps(
                 total += len(chunk)
                 if max_bytes > 0 and total >= max_bytes:
                     break
-    except (URLError, HTTPError, TimeoutError, OSError) as exc:
+    except (
+        URLError,
+        HTTPError,
+        TimeoutError,
+        OSError,
+        http.client.IncompleteRead,
+    ) as exc:
         return {
             "success": 0.0,
             "mbps": None,
@@ -500,7 +507,21 @@ def main() -> int:
                 )
                 continue
 
-            dl = download_speed_mbps(args.download_url, args.download_timeout, args.download_bytes)
+            try:
+                dl = download_speed_mbps(
+                    args.download_url,
+                    args.download_timeout,
+                    args.download_bytes,
+                )
+            except Exception as exc:  # noqa: BLE001
+                row["status"] = "download-failed"
+                row["error"] = f"download probe failed: {exc}"
+                results.append(row)
+                print(
+                    "  download failed"
+                    f" (avg={format_num(row['latency_ms'])}ms): {row['error']}"
+                )
+                continue
             if not bool(dl.get("success", 0.0)):
                 row["status"] = "download-failed"
                 row["error"] = str(dl.get("error") or "download failed")
